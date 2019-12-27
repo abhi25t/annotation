@@ -1,5 +1,5 @@
-import cv2, os, sys
-#import time
+import cv2, os, sys, json
+from datetime import datetime
 import logging
 import argparse
 
@@ -30,7 +30,7 @@ def parse_arguments():
     return video_path, tracker_name, fps
 
 def get_video_parameters(vs):
-    video_params = OrderedDict()
+    video_params = {}    #OrderedDict()
     video_params['frames_count'] = int(vs.get(cv2.CAP_PROP_FRAME_COUNT))
     video_params['original_fps'] = vs.get(cv2.CAP_PROP_FPS)
     video_params['video_width']  = int(vs.get(cv2.CAP_PROP_FRAME_WIDTH))
@@ -38,10 +38,21 @@ def get_video_parameters(vs):
 
     return video_params
 
+def output_annotations(annotations_file, data):
+
+    logging_data = {} #OrderedDict()
+    logging_data['frame']    = data['frameNo']
+    logging_data['userFlag'] = data['user']
+    logging_data['tracker']  = data['tracker']
+    logging_data['bounding_boxes']   = str(data['bounding_boxes'])
+
+    with open(annotations_file, 'a+') as output_file:
+        json.dump(logging_data, output_file) 
+
 def consolidate_annotations():
     pass
 
-def process_video(video_path, tracker_name, fps):
+def process_video(video_path, tracker_name, fps, annotations_file):
     
     try:
         video_stream = cv2.VideoCapture(video_path)   # Create Opencv's video stream object
@@ -53,7 +64,10 @@ def process_video(video_path, tracker_name, fps):
         return
     else:
         video_params = get_video_parameters(video_stream)
-        start_video(video_stream, video_params, tracker_name, fps)
+
+        #logging.basicConfig(filename='logggggg.txt', filemode='a', level=logging.INFO)       
+        
+        start_video(video_stream, video_params, tracker_name, fps, annotations_file)
         video_stream.release()    # release the file pointer
         cv2.destroyAllWindows()   # close all windows
 
@@ -77,7 +91,7 @@ def start_tracking(frame, tracker_name, tracking_algos):
 
     return trackers, box
 
-def display_frame(vs, video_params, trackers, tracker_name, paused, flag='next', user=1):
+def display_frame(vs, video_params, trackers, tracker_name, paused, annotations_file, flag='next', user=False):
     ret = None
     frame = None
 
@@ -122,10 +136,16 @@ def display_frame(vs, video_params, trackers, tracker_name, paused, flag='next',
             (x, y, w, h) = [int(v) for v in box]
             cv2.rectangle(frame, (x, y), (x + w, y + h), (0, 255, 0), 2)
 
+    output_annotations(annotations_file, {
+                "bounding_boxes":boxes,
+                "tracker": tracker_name,
+                "frameNo": vs.get(cv2.CAP_PROP_POS_FRAMES) - 1,
+                "user": 1 if user else 0   })
+
     cv2.imshow("frame", frame)    # show the output frame
     return frame, paused
 
-def start_video(vs, video_params, tracker_name, fps):
+def start_video(vs, video_params, tracker_name, fps, annotations_file):
 
     tracking_algos = OrderedDict()
     tracking_algos['csrt']       = cv2.TrackerCSRT_create         # Discriminative Correlation Filter (with Channel and Spatial Reliability)
@@ -143,11 +163,11 @@ def start_video(vs, video_params, tracker_name, fps):
     paused = True
 
     while vs.isOpened():
-        try:
-            frame, paused = display_frame(vs, video_params, trackers, tracker_name, paused)    # grab the current frame
-        except:
-            print ('display_frame function excepted' )    # Only if NOT LAST frame
-            break
+        # try:
+        frame, paused = display_frame(vs, video_params, trackers, tracker_name, paused, annotations_file)    # grab the current frame
+        # except:
+        #     print ('display_frame function excepted' )    # Only if NOT LAST frame
+        #     break
 
         if paused == True:
             sleep_time = 0
@@ -161,17 +181,17 @@ def start_video(vs, video_params, tracker_name, fps):
             break
 
         elif key == ord('g'):  # Play at fps
-            frame, paused = display_frame(vs, video_params, trackers, tracker_name, False)
+            frame, paused = display_frame(vs, video_params, trackers, tracker_name, False, annotations_file)
 
         # if the 's' key is pressed, we will "select" a bounding boxes to track objects
         elif key == ord('s'):
             trackers, box = start_tracking(frame, tracker_name, tracking_algos)
-            frame, paused = display_frame(vs, video_params, trackers, tracker_name, paused, 'cur')
+            frame, paused = display_frame(vs, video_params, trackers, tracker_name, paused, annotations_file, 'cur', user=True)
         
         elif key == ord('r'): # select the 'r' key to reset bounding box
             trackers.clear()
             trackers, box = start_tracking(frame, tracker_name, tracking_algos)
-            frame, paused = display_frame(vs, video_params, trackers, tracker_name, paused, 'cur')
+            frame, paused = display_frame(vs, video_params, trackers, tracker_name, paused, annotations_file, 'cur', user=True)
 
         elif key == ord('t'):    # select next tracking algo
             if tracker_pos == len(tracker_list):
@@ -181,7 +201,7 @@ def start_video(vs, video_params, tracker_name, fps):
             tracker_name = tracker_list[tracker_pos]
             print (tracker_name, ' tracking algo selected')
             trackers, box = start_tracking(frame, tracker_name, tracking_algos)
-            frame, paused = display_frame(vs, video_params, trackers, tracker_name, paused, 'cur')
+            frame, paused = display_frame(vs, video_params, trackers, tracker_name, paused, annotations_file, 'cur', user=True)
 
         elif key == ord('y'):    # select previous tracking algo
             if tracker_pos > 0:
@@ -191,7 +211,7 @@ def start_video(vs, video_params, tracker_name, fps):
             tracker_name = tracker_list[tracker_pos]
             print (tracker_name, ' tracking algo selected')
             trackers, box = start_tracking(frame, tracker_name, tracking_algos)
-            frame, paused = display_frame(vs, video_params, trackers, tracker_name, paused, 'cur')
+            frame, paused = display_frame(vs, video_params, trackers, tracker_name, paused, annotations_file, 'cur', user=True)
 
         elif key == ord('x'):
             paused = True
@@ -210,19 +230,19 @@ def start_video(vs, video_params, tracker_name, fps):
                     exit()
 
                 elif key2 == ord('n'):  # Next frame
-                    frame, paused = display_frame(vs, video_params, trackers, tracker_name, paused)
+                    frame, paused = display_frame(vs, video_params, trackers, tracker_name, paused, annotations_file)
 
                 elif key2 == ord('p'):  # Previous frame
-                    frame, paused = display_frame(vs, video_params, trackers, tracker_name, paused, 'prev')
+                    frame, paused = display_frame(vs, video_params, trackers, tracker_name, paused, annotations_file, 'prev')
 
                 elif key2 == ord('s'):
                     trackers, box = start_tracking(frame, tracker_name, tracking_algos)
-                    frame, paused = display_frame(vs, video_params, trackers, tracker_name, paused, 'cur')
+                    frame, paused = display_frame(vs, video_params, trackers, tracker_name, paused, annotations_file, 'cur', user=True)
 
                 elif key2 == ord('r'):
                     trackers.clear()
                     trackers, box = start_tracking(frame, tracker_name, tracking_algos)
-                    frame, paused = display_frame(vs, video_params, trackers, tracker_name, paused, 'cur')
+                    frame, paused = display_frame(vs, video_params, trackers, tracker_name, paused, annotations_file, 'cur', user=True)
 
                 elif key2 == ord('t'):    # select next tracking algo
                     if tracker_pos == len(tracker_list):
@@ -232,7 +252,7 @@ def start_video(vs, video_params, tracker_name, fps):
                     tracker_name = tracker_list[tracker_pos]
                     print (tracker_name, ' tracking algo selected')
                     trackers, box = start_tracking(frame, tracker_name, tracking_algos)
-                    frame, paused = display_frame(vs, video_params, trackers, tracker_name, paused, 'cur')
+                    frame, paused = display_frame(vs, video_params, trackers, tracker_name, paused, annotations_file, 'cur', user=True)
 
                 elif key2 == ord('y'):    # select previous tracking algo
                     if tracker_pos > 0:
@@ -242,9 +262,29 @@ def start_video(vs, video_params, tracker_name, fps):
                     tracker_name = tracker_list[tracker_pos]
                     print (tracker_name, ' tracking algo selected')
                     trackers, box = start_tracking(frame, tracker_name, tracking_algos)
-                    frame, paused = display_frame(vs, video_params, trackers, tracker_name, paused, 'cur')
+                    frame, paused = display_frame(vs, video_params, trackers, tracker_name, paused, annotations_file, 'cur', user=True)
 
                 elif key2 == ord('+'):
+                    print ('key2: ', key2)
+                    key3 = cv2.waitKey(1) or 0xff  # waiting for another key to be pressed
+                    print ('key3: ', key3)
+                    cv2.imshow('frame', frame) 
+                    while True:
+                        key3 = cv2.waitKey(1) or 0xff 
+                        if key3 == ord('2'):   # down
+                            print ('key3: ', key3)
+                        elif key3 == ord('4'):   # left
+                            print ('key3: ', key3)
+                        elif key3 == ord('6'):   # right
+                            print ('key3: ', key3)
+                        elif key3 == ord('8'):   # up
+                            print ('key3: ', key3)
+                        elif key3 == ord('q'):   # quit
+                            print('Exit by user')
+                            exit()
+
+                elif key2 == ord('-'):
+                    print ('key2: ', key2)
                     key3 = cv2.waitKey(1) or 0xff  # waiting for another key to be pressed
                     print ('key3: ', key3)
                     cv2.imshow('frame', frame) 
@@ -261,10 +301,16 @@ def create_folder(video_path):
     else:
         print (new_folder, ' folder already exists. Video annotations will be saved here.')
 
+    current_time = datetime.now().strftime("%Y%m%d%H%M%S")
+    
+    annotations_file = os.path.join(new_folder, current_time + '.txt')
+
+    return annotations_file
+
 def main():
     video_path, tracker_name,fps = parse_arguments()
-    create_folder(video_path)
-    process_video(video_path, tracker_name, fps)
+    annotations_file = create_folder(video_path)
+    process_video(video_path, tracker_name, fps, annotations_file)
 
 if __name__ == "__main__":
     main()
