@@ -307,9 +307,23 @@ def create_folder(video_path):
 
     return annotations_file
 
+def get_previous_annotations(annotations_file):
+    input_file=open(annotations_file, 'r')
+    json_decode=json.load(input_file)
+    annotations={}
+    for item in json_decode[:2]:
+        #annotations['title']=item.get('labels').get('en').get('value')
+        #my_dict['description']=item.get('descriptions').get('en').get('value')
+        #my_dict['id']=item.get('id')
+        print (annotations)
+
+    return annotations
+
+
 def main():
     video_path, tracker_name,fps = parse_arguments()
     annotations_file = create_folder(video_path)
+    get_previous_annotations(annotations_file)
     process_video(video_path, tracker_name, fps, annotations_file)
 
 if __name__ == "__main__":
