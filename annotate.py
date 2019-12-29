@@ -1,9 +1,8 @@
-import cv2, os, sys, json
-from datetime import datetime
-import logging
-import argparse
+import cv2
+import argparse, os, sys, json
 
-from collections   import OrderedDict
+from datetime     import datetime
+from collections  import OrderedDict
 
 def parse_arguments():
     ap = argparse.ArgumentParser()
@@ -38,38 +37,50 @@ def get_video_parameters(vs):
 
     return video_params
 
-def output_annotations(annotations_file, data):
+def output_annotations(new_annotations_file, data):
 
-    logging_data = {} #OrderedDict()
-    logging_data['frame']    = data['frameNo']
-    logging_data['userFlag'] = data['user']
-    logging_data['tracker']  = data['tracker']
-    logging_data['bounding_boxes']   = str(data['bounding_boxes'])
+    logging_data = {} 
 
-    with open(annotations_file, 'a+') as output_file:
-        json.dump(logging_data, output_file) 
+    frame_num = int(data['frameNo'])
+    user      = data['user']
 
-def consolidate_annotations():
-    pass
+    logging_data[frame_num] = {}
+    logging_data[frame_num]['tracker'       ] = 'human' if user==1 else data['tracker']
+    logging_data[frame_num]['bounding_boxes'] = str(data['bounding_boxes'])
 
-def process_video(video_path, tracker_name, fps, annotations_file):
-    
-    try:
-        video_stream = cv2.VideoCapture(video_path)   # Create Opencv's video stream object
-    except:
-        pass
+    new_annotations_file.write(json.dumps(logging_data))
+    new_annotations_file.write('\n')
 
-    if not video_stream.isOpened(): 
-        print ("Error: Could not open video file at -->",video_path)
-        return
-    else:
-        video_params = get_video_parameters(video_stream)
+def update_annotation_file(new_annotations_path, old_annotations_path):
+    '''
+    I can't do a simple append to old file because, I need to overwrite duplicates (which are actually updates) from old files
+    '''
+    annotations = OrderedDict()     # use OrderedDict here for using sorting
 
-        #logging.basicConfig(filename='logggggg.txt', filemode='a', level=logging.INFO)       
-        
-        start_video(video_stream, video_params, tracker_name, fps, annotations_file)
-        video_stream.release()    # release the file pointer
-        cv2.destroyAllWindows()   # close all windows
+    if old_annotations_path is not None:
+        old_input_file = open(old_annotations_path, 'r')
+        for line in old_input_file:
+            json_decode = json.loads(line)
+            for item in json_decode:
+                annotations[item] = json_decode[item]
+        old_input_file.close()
+
+    new_input_file = open(new_annotations_path, 'r')
+    for line in new_input_file:
+        json_decode = json.loads(line)
+        for item in json_decode:
+            annotations[item] = json_decode[item]
+    new_input_file.close()
+
+    # Write fresh
+    new_annotations_file = open(old_annotations_path, 'w')
+    for item in annotations:
+        new_annotations_file.write('{"' + item + '":' + json.dumps(annotations[item])    + '}')
+        new_annotations_file.write('\n')
+    new_annotations_file.close()       
+
+    # Don't update if human. 
+    # Well what if human really wants himself to be overwritten.... Think about asking for input
 
 def start_tracking(frame, tracker_name, tracking_algos):
     #tracker_list = [*tracking_algos]           ###################################################3
@@ -91,7 +102,7 @@ def start_tracking(frame, tracker_name, tracking_algos):
 
     return trackers, box
 
-def display_frame(vs, video_params, trackers, tracker_name, paused, annotations_file, flag='next', user=False):
+def display_frame(vs, video_params, trackers, tracker_name, paused, new_annotations_file, old_annotations, tracking_on, flag='next', user=False):
     ret = None
     frame = None
 
@@ -126,26 +137,76 @@ def display_frame(vs, video_params, trackers, tracker_name, paused, annotations_
     text = "{}: {}".format('frame # ', current_frame_num)
     cv2.putText(frame, text, (10, video_height - ((3 * 20) + 20)), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 0, 0), 2)
 
-    text = "{}: {}".format('Algo', tracker_name)
-    cv2.putText(frame, text, (10, video_height - ((2 * 20) + 20)), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 0, 0), 2)
-
     (success, boxes) = trackers.update(frame)
 
-    if success:    # if the tracking was a success
-        for box in boxes:
-            (x, y, w, h) = [int(v) for v in box]
-            cv2.rectangle(frame, (x, y), (x + w, y + h), (0, 255, 0), 2)
+    #print (current_frame_num , ' : ' , success, 'tracking_on : ' , tracking_on)
 
-    output_annotations(annotations_file, {
-                "bounding_boxes":boxes,
+    if tracking_on==True:     # if the tracking was a success
+        text = "{}: {}".format('Algo', tracker_name)
+        cv2.putText(frame, text, (10, video_height - ((2 * 20) + 20)), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 0, 0), 2)
+  
+        boxes_with_int_coords = []
+        for box in boxes:
+            box_int = [int(v) for v in box]
+            (x, y, w, h) = box_int
+            cv2.rectangle(frame, (x, y), (x + w, y + h), (0, 255, 0), 2)
+            boxes_with_int_coords.append(box_int)
+
+        output_annotations(new_annotations_file, {
+                "bounding_boxes":boxes_with_int_coords,
                 "tracker": tracker_name,
                 "frameNo": vs.get(cv2.CAP_PROP_POS_FRAMES) - 1,
                 "user": 1 if user else 0   })
+    else:
+        tracker_used, old_bounding_boxes = get_boxes_for_frame(current_frame_num, old_annotations)
+
+        if tracker_used is not None:
+            if tracker_used == 'human' :
+                color = (208, 224, 64)   # turquoise
+            else:
+                color = (0, 165, 255)    # orange
+
+            text = "{}: {}".format('Algo', tracker_used)
+            cv2.putText(frame, text, (10, video_height - ((2 * 20) + 20)), cv2.FONT_HERSHEY_SIMPLEX, 0.6, color, 2)
+ 
+            old_bounding_boxes = eval(old_bounding_boxes)
+            for box in old_bounding_boxes:
+                (x, y, w, h) = [int(v) for v in box]
+                cv2.rectangle(frame, (x, y), (x + w, y + h), color, 2)
 
     cv2.imshow("frame", frame)    # show the output frame
     return frame, paused
 
-def start_video(vs, video_params, tracker_name, fps, annotations_file):
+def get_boxes_for_frame(frame_num, old_annotations):
+
+    try:
+        frame_annotations = old_annotations[str(frame_num)]
+        tracker = frame_annotations['tracker']
+        bounding_boxes = frame_annotations['bounding_boxes']
+
+        return tracker, bounding_boxes
+    except:
+        return None, None 
+
+def process_video(video_path, tracker_name, fps):
+    try:
+        vs = cv2.VideoCapture(video_path)   # Create Opencv's video stream object
+    except:
+        pass
+
+    if not vs.isOpened(): 
+        print ("Error: Could not open video file at -->",video_path)
+        exit()
+   
+    old_annotations, old_annotations_path = get_previous_annotations(video_path)
+
+    new_annotations_path = create_folder_and_file(video_path)         
+    new_annotations_file = open(new_annotations_path, 'w')
+
+    trackers     = cv2.MultiTracker_create() 
+    video_params = get_video_parameters(vs)
+    paused       = True
+    tracking_on  = False
 
     tracking_algos = OrderedDict()
     tracking_algos['csrt']       = cv2.TrackerCSRT_create         # Discriminative Correlation Filter (with Channel and Spatial Reliability)
@@ -155,19 +216,13 @@ def start_video(vs, video_params, tracker_name, fps, annotations_file):
     tracking_algos['tld']        = cv2.TrackerTLD_create
     tracking_algos['medianflow'] = cv2.TrackerMedianFlow_create
     tracking_algos['mosse']      = cv2.TrackerMOSSE_create        # Extremely fast but not as accurate as either KCF or CSRT
+
     tracker_list = [*tracking_algos]
     tracker_pos  = tracker_list.index(tracker_name)
 
-    trackers = cv2.MultiTracker_create() 
-
-    paused = True
-
     while vs.isOpened():
-        # try:
-        frame, paused = display_frame(vs, video_params, trackers, tracker_name, paused, annotations_file)    # grab the current frame
-        # except:
-        #     print ('display_frame function excepted' )    # Only if NOT LAST frame
-        #     break
+
+        frame, paused = display_frame(vs, video_params, trackers, tracker_name, paused, new_annotations_file, old_annotations, tracking_on)    # grab the current frame
 
         if paused == True:
             sleep_time = 0
@@ -178,20 +233,39 @@ def start_video(vs, video_params, tracker_name, fps, annotations_file):
 
         if key == ord('q'):  # quit
             print('Exit by user')
-            break
+
+            if tracking_on == True:
+                merger = input("Shall we update Consolidated file with current session annotations ? (y/n): ") 
+                if merger == 'y':
+                    new_annotations_file.close()
+                    update_annotation_file(new_annotations_path, old_annotations_path)
+                else:
+                    print ('No. It was a waste!!!')
+            else:
+                print ('No new annotations in this session to update.')
+
+                break
+
+        # elif key == ord('n'):  # Next frame
+        #     frame, paused = display_frame(vs, video_params, trackers, tracker_name, paused, new_annotations_file, old_annotations, tracking_on)
+            
+        # elif key == ord('p'):  # Previous frame
+        #     frame, paused = display_frame(vs, video_params, trackers, tracker_name, paused, new_annotations_file, old_annotations, tracking_on, 'prev')
 
         elif key == ord('g'):  # Play at fps
-            frame, paused = display_frame(vs, video_params, trackers, tracker_name, False, annotations_file)
+            frame, paused = display_frame(vs, video_params, trackers, tracker_name, False, new_annotations_file, old_annotations, tracking_on)
 
         # if the 's' key is pressed, we will "select" a bounding boxes to track objects
         elif key == ord('s'):
             trackers, box = start_tracking(frame, tracker_name, tracking_algos)
-            frame, paused = display_frame(vs, video_params, trackers, tracker_name, paused, annotations_file, 'cur', user=True)
+            tracking_on = True
+            frame, paused = display_frame(vs, video_params, trackers, tracker_name, paused, new_annotations_file, old_annotations, tracking_on, 'cur', user = True)
         
         elif key == ord('r'): # select the 'r' key to reset bounding box
             trackers.clear()
             trackers, box = start_tracking(frame, tracker_name, tracking_algos)
-            frame, paused = display_frame(vs, video_params, trackers, tracker_name, paused, annotations_file, 'cur', user=True)
+            tracking_on = True
+            frame, paused = display_frame(vs, video_params, trackers, tracker_name, paused, new_annotations_file, old_annotations, tracking_on, 'cur', user = True)
 
         elif key == ord('t'):    # select next tracking algo
             if tracker_pos == len(tracker_list):
@@ -201,7 +275,8 @@ def start_video(vs, video_params, tracker_name, fps, annotations_file):
             tracker_name = tracker_list[tracker_pos]
             print (tracker_name, ' tracking algo selected')
             trackers, box = start_tracking(frame, tracker_name, tracking_algos)
-            frame, paused = display_frame(vs, video_params, trackers, tracker_name, paused, annotations_file, 'cur', user=True)
+            tracking_on = True
+            frame, paused = display_frame(vs, video_params, trackers, tracker_name, paused, new_annotations_file, old_annotations, tracking_on, 'cur', user=True)
 
         elif key == ord('y'):    # select previous tracking algo
             if tracker_pos > 0:
@@ -211,7 +286,8 @@ def start_video(vs, video_params, tracker_name, fps, annotations_file):
             tracker_name = tracker_list[tracker_pos]
             print (tracker_name, ' tracking algo selected')
             trackers, box = start_tracking(frame, tracker_name, tracking_algos)
-            frame, paused = display_frame(vs, video_params, trackers, tracker_name, paused, annotations_file, 'cur', user=True)
+            tracking_on   = True
+            frame, paused = display_frame(vs, video_params, trackers, tracker_name, paused, new_annotations_file, old_annotations, tracking_on, 'cur', user=True)
 
         elif key == ord('x'):
             paused = True
@@ -230,67 +306,77 @@ def start_video(vs, video_params, tracker_name, fps, annotations_file):
                     exit()
 
                 elif key2 == ord('n'):  # Next frame
-                    frame, paused = display_frame(vs, video_params, trackers, tracker_name, paused, annotations_file)
+                    frame, paused = display_frame(vs, video_params, trackers, tracker_name, paused, new_annotations_file, old_annotations, tracking_on)
+                    
 
                 elif key2 == ord('p'):  # Previous frame
-                    frame, paused = display_frame(vs, video_params, trackers, tracker_name, paused, annotations_file, 'prev')
+                    frame, paused = display_frame(vs, video_params, trackers, tracker_name, paused, new_annotations_file, old_annotations, tracking_on, 'prev')
 
                 elif key2 == ord('s'):
+                    tracking_on=True
                     trackers, box = start_tracking(frame, tracker_name, tracking_algos)
-                    frame, paused = display_frame(vs, video_params, trackers, tracker_name, paused, annotations_file, 'cur', user=True)
+                    frame, paused = display_frame(vs, video_params, trackers, tracker_name, paused, new_annotations_file, old_annotations, tracking_on, 'cur', user=True)
 
                 elif key2 == ord('r'):
                     trackers.clear()
                     trackers, box = start_tracking(frame, tracker_name, tracking_algos)
-                    frame, paused = display_frame(vs, video_params, trackers, tracker_name, paused, annotations_file, 'cur', user=True)
+                    tracking_on = True
+                    frame, paused = display_frame(vs, video_params, trackers, tracker_name, paused, new_annotations_file, old_annotations, tracking_on, 'cur', user=True)
 
                 elif key2 == ord('t'):    # select next tracking algo
                     if tracker_pos == len(tracker_list):
                         tracker_pos = 0
                     else:
                         tracker_pos += 1
+                        
                     tracker_name = tracker_list[tracker_pos]
                     print (tracker_name, ' tracking algo selected')
                     trackers, box = start_tracking(frame, tracker_name, tracking_algos)
-                    frame, paused = display_frame(vs, video_params, trackers, tracker_name, paused, annotations_file, 'cur', user=True)
+                    tracking_on = True
+                    frame, paused = display_frame(vs, video_params, trackers, tracker_name, paused, new_annotations_file, old_annotations, tracking_on, 'cur', user=True)
 
                 elif key2 == ord('y'):    # select previous tracking algo
                     if tracker_pos > 0:
                         tracker_pos -= 1
                     else:
                         tracker_pos = len(tracker_list)
+
                     tracker_name = tracker_list[tracker_pos]
                     print (tracker_name, ' tracking algo selected')
                     trackers, box = start_tracking(frame, tracker_name, tracking_algos)
-                    frame, paused = display_frame(vs, video_params, trackers, tracker_name, paused, annotations_file, 'cur', user=True)
+                    tracking_on = True
+                    frame, paused = display_frame(vs, video_params, trackers, tracker_name, paused, new_annotations_file, old_annotations, tracking_on, 'cur', user=True)
 
-                elif key2 == ord('+'):
-                    print ('key2: ', key2)
-                    key3 = cv2.waitKey(1) or 0xff  # waiting for another key to be pressed
-                    print ('key3: ', key3)
-                    cv2.imshow('frame', frame) 
-                    while True:
-                        key3 = cv2.waitKey(1) or 0xff 
-                        if key3 == ord('2'):   # down
-                            print ('key3: ', key3)
-                        elif key3 == ord('4'):   # left
-                            print ('key3: ', key3)
-                        elif key3 == ord('6'):   # right
-                            print ('key3: ', key3)
-                        elif key3 == ord('8'):   # up
-                            print ('key3: ', key3)
-                        elif key3 == ord('q'):   # quit
-                            print('Exit by user')
-                            exit()
+                # elif key2 == ord('+'):
+                #     print ('key2: ', key2)
+                #     key3 = cv2.waitKey(1) or 0xff  # waiting for another key to be pressed
+                #     print ('key3: ', key3)
+                #     cv2.imshow('frame', frame) 
+                #     while True:
+                #         key3 = cv2.waitKey(1) or 0xff 
+                #         if key3 == ord('2'):   # down
+                #             print ('key3: ', key3)
+                #         elif key3 == ord('4'):   # left
+                #             print ('key3: ', key3)
+                #         elif key3 == ord('6'):   # right
+                #             print ('key3: ', key3)
+                #         elif key3 == ord('8'):   # up
+                #             print ('key3: ', key3)
+                #         elif key3 == ord('q'):   # quit
+                #             print('Exit by user')
+                #             exit()
 
-                elif key2 == ord('-'):
-                    print ('key2: ', key2)
-                    key3 = cv2.waitKey(1) or 0xff  # waiting for another key to be pressed
-                    print ('key3: ', key3)
-                    cv2.imshow('frame', frame) 
-                    pass
+                # elif key2 == ord('-'):
+                #     print ('key2: ', key2)
+                #     key3 = cv2.waitKey(1) or 0xff  # waiting for another key to be pressed
+                #     print ('key3: ', key3)
+                #     cv2.imshow('frame', frame) 
+                #     pass
 
-def create_folder(video_path):
+    vs.release()    # release the file pointer
+    cv2.destroyAllWindows()   # close all windows
+
+def create_folder_and_file(video_path):
     parent_folder = os.path.dirname(video_path)    # result is '' for './' 
     base = os.path.basename(video_path)
     new_folder = os.path.join(parent_folder,os.path.splitext(base)[0])
@@ -299,47 +385,47 @@ def create_folder(video_path):
         os.makedirs(new_folder)
         print ('Created new folder for saving video annotations: ' , new_folder)
     else:
-        print (new_folder, ' folder already exists. Video annotations will be saved here.')
+        print (new_folder, ' folder already exists. Video annotations will be referred to here.')
 
     current_time = datetime.now().strftime("%Y%m%d%H%M%S")
     
-    annotations_file = os.path.join(new_folder, current_time + '.txt')
+    new_annotations_path = os.path.join(new_folder, current_time + '.txt')
 
-    return annotations_file
+    return new_annotations_path
 
-def get_previous_annotations(annotations_file):
-    input_file=open(annotations_file, 'r')
-    json_decode=json.load(input_file)
-    annotations={}
-    for item in json_decode[:2]:
-        #annotations['title']=item.get('labels').get('en').get('value')
-        #my_dict['description']=item.get('descriptions').get('en').get('value')
-        #my_dict['id']=item.get('id')
-        print (annotations)
+def get_previous_annotations(video_path):
 
-    return annotations
+    parent_folder        = os.path.dirname(video_path)    # result is '' for './' 
+    base_primary         = os.path.splitext(os.path.basename(video_path))[0]  
+    new_folder           = os.path.join(parent_folder, base_primary)
+    old_annotations_path = os.path.join(new_folder,base_primary + '.txt') 
 
+    if os.path.isfile(old_annotations_path):
+        print ("Consolidated annotations file found :" , old_annotations_path)
+        old_annotations={}
+        input_file = open(old_annotations_path, 'r')
+        for line in input_file:
+            json_decode = json.loads(line)
+            for item in json_decode:
+                old_annotations[item] = json_decode[item]
+        input_file.close()
+        #print (old_annotations['9'])
+        return old_annotations, old_annotations_path
+
+    else:
+        print ("Consolidated annotations file not found.  Creating new : " , old_annotations_path)
+        return None, None
 
 def main():
     video_path, tracker_name,fps = parse_arguments()
-    annotations_file = create_folder(video_path)
-    get_previous_annotations(annotations_file)
-    process_video(video_path, tracker_name, fps, annotations_file)
+    process_video(video_path, tracker_name, fps)
 
 if __name__ == "__main__":
     main()
 
 # 2do:
-# Show the objects already tagged
-# user tagged = blue color
-# Algo tagged = yellow color
-# Tagging Consoliation script
-
-# Display algo name only if tracking is on 
-# Display when successfully tracked
-# Logging
-# Log to frame
-# create folder and log file
+# Show the objects already tagged - user tagged = blue color
+# Algo tagged old = orange color
 
 ''' 
 cv2.set(CAP_PROP_POS_FRAMES) is known to not seek the specified frame accurately. 
@@ -359,7 +445,7 @@ Keys->
 
 Command to Run app ->
 
-    python object_tracker.py --video [path/to/video] --tracker [tracker type example:csrt] --slow [time in sec to slow down video]
+    python object_tracker.py --video [path/to/video] --tracker [tracker algorithm] --fps [frames per sec]
 
 Example Command ->
 
