@@ -178,6 +178,22 @@ def display_frame(vs, video_params, trackers, tracker_name, paused, new_annotati
     cv2.imshow("frame", frame)    # show the output frame
     return frame, paused
 
+def exit_program( vs, tracking_on, new_annotations_file, new_annotations_path, old_annotations_path ):
+    vs.release()    # release the file pointer
+    cv2.destroyAllWindows()   # close all windows            
+    print('Exit by user')
+    if tracking_on == True:
+        merger = input("Shall we update Consolidated file with current session annotations ? (y/n): ") 
+        if merger == 'y':
+            new_annotations_file.close()
+            update_annotation_file(new_annotations_path, old_annotations_path)
+        else:
+            print ('No. It was not useful !')
+    else:
+        print ('No new annotations in this session to update.')
+
+    exit()
+
 def get_boxes_for_frame(frame_num, old_annotations):
 
     try:
@@ -233,27 +249,7 @@ def process_video(video_path, tracker_name, fps):
         key = cv2.waitKey(sleep_time) & 0xFF
 
         if key == ord('q'):  # quit
-            vs.release()    # release the file pointer
-            cv2.destroyAllWindows()   # close all windows            
-            print('Exit by user')
-
-            if tracking_on == True:
-                merger = input("Shall we update Consolidated file with current session annotations ? (y/n): ") 
-                if merger == 'y':
-                    new_annotations_file.close()
-                    update_annotation_file(new_annotations_path, old_annotations_path)
-                else:
-                    print ('No. It was not useful !')
-            else:
-                print ('No new annotations in this session to update.')
-
-                break
-
-        # elif key == ord('n'):  # Next frame
-        #     frame, paused = display_frame(vs, video_params, trackers, tracker_name, paused, new_annotations_file, old_annotations, tracking_on)
-            
-        # elif key == ord('p'):  # Previous frame
-        #     frame, paused = display_frame(vs, video_params, trackers, tracker_name, paused, new_annotations_file, old_annotations, tracking_on, 'prev')
+            exit_program( vs, tracking_on, new_annotations_file, new_annotations_path, old_annotations_path )
 
         elif key == ord('g'):  # Play at fps
             frame, paused = display_frame(vs, video_params, trackers, tracker_name, False, new_annotations_file, old_annotations, tracking_on)
@@ -305,8 +301,7 @@ def process_video(video_path, tracker_name, fps):
                     break              # resume
 
                 elif key2 == ord('q'):  # quit
-                    print('Exit by user')
-                    exit()
+                    exit_program( vs, tracking_on, new_annotations_file, new_annotations_path, old_annotations_path )
 
                 elif key2 == ord('n'):  # Next frame
                     frame, paused = display_frame(vs, video_params, trackers, tracker_name, paused, new_annotations_file, old_annotations, tracking_on)
