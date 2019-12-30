@@ -57,7 +57,8 @@ def update_annotation_file(new_annotations_path, old_annotations_path):
     '''
     annotations = OrderedDict()     # use OrderedDict here for using sorting
 
-    if old_annotations_path is not None:
+    #if old_annotations_path is not None:
+    if os.path.isfile(old_annotations_path):
         old_input_file = open(old_annotations_path, 'r')
         for line in old_input_file:
             json_decode = json.loads(line)
@@ -232,6 +233,8 @@ def process_video(video_path, tracker_name, fps):
         key = cv2.waitKey(sleep_time) & 0xFF
 
         if key == ord('q'):  # quit
+            vs.release()    # release the file pointer
+            cv2.destroyAllWindows()   # close all windows            
             print('Exit by user')
 
             if tracking_on == True:
@@ -240,7 +243,7 @@ def process_video(video_path, tracker_name, fps):
                     new_annotations_file.close()
                     update_annotation_file(new_annotations_path, old_annotations_path)
                 else:
-                    print ('No. It was a waste!!!')
+                    print ('No. It was not useful !')
             else:
                 print ('No new annotations in this session to update.')
 
@@ -413,8 +416,8 @@ def get_previous_annotations(video_path):
         return old_annotations, old_annotations_path
 
     else:
-        print ("Consolidated annotations file not found.  Creating new : " , old_annotations_path)
-        return None, None
+        print ("Consolidated annotations file not found.  Will create new : " , old_annotations_path)
+        return None, old_annotations_path
 
 def main():
     video_path, tracker_name,fps = parse_arguments()
