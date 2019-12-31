@@ -11,14 +11,18 @@ def parse_arguments():
     return args['raw'], args['out']
 
 def crop_grayscale_vid(video_path, processed_videos_folder):
-    #ffmpeg -i abhay8_L_20181009134724_1343130.avi -vf hue=s=0 -filter:v "crop=562:543:236:145" -c:a copy newww.avi     # mp4 quality is better
-    pass
+    base = os.path.basename(video_path)
+    out_file = os.path.join(processed_videos_folder, os.path.splitext(base)[0] + '.mp4' )  
+    ffmpeg_cmd = 'ffmpeg -i ' + video_path + ' -vf hue=s=0 -filter:v "crop=562:543:236:145" -c:a copy ' + out_file
+    print ('---------------')
+    print (ffmpeg_cmd)
+    subprocess.call(ffmpeg_cmd, shell=True)
 
 def main():
     raw_videos_folder, processed_videos_folder = parse_arguments()
     raw_vids = os.listdir(raw_videos_folder)
     for video_path in raw_vids:
-        crop_grayscale_vid(video_path, processed_videos_folder)
+        crop_grayscale_vid(  os.path.join(raw_videos_folder, video_path )    , processed_videos_folder)
 
 if __name__ == "__main__":
     main()
