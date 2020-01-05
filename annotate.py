@@ -1,8 +1,9 @@
 import cv2
 import argparse, os, sys, json
-
+import inspect
 from datetime     import datetime
 from collections  import OrderedDict
+from functools    import partial
 
 def parse_arguments():
     ap = argparse.ArgumentParser()
@@ -155,9 +156,9 @@ def display_frame(vs, video_params, trackers, tracker_name, paused, new_annotati
         #print ('------>' , boxes_with_int_coords) 
         output_annotations(new_annotations_file, {
                 "bounding_boxes":boxes_with_int_coords,
-                "tracker": tracker_name,
-                "frameNo": vs.get(cv2.CAP_PROP_POS_FRAMES) - 1,
-                "user": 1 if user else 0   })
+                "tracker"       : tracker_name,
+                "frameNo"       : vs.get(cv2.CAP_PROP_POS_FRAMES) - 1,
+                "user"          : 1 if user else 0   }   )
     else:
         tracker_used, old_bounding_boxes = get_boxes_for_frame(current_frame_num, old_annotations)
 
@@ -176,6 +177,7 @@ def display_frame(vs, video_params, trackers, tracker_name, paused, new_annotati
                 (x, y, w, h) = [int(v) for v in box]
                 cv2.rectangle(frame, (x, y), (x + w, y + h), color, 2)
 
+    cv2.setTrackbarPos('Slider:', 'frame', current_frame_num)
     cv2.imshow("frame", frame)    # show the output frame
     return frame, paused, boxes_with_int_coords
 
@@ -215,6 +217,14 @@ def get_boxes_for_frame(frame_num, old_annotations):
     except:
         return None, None 
 
+def trackbar_change(trackbar_value, vs_):
+    called_by = inspect.stack()[1].function
+    if called_by == 'process_video':
+        vs_.set(cv2.CAP_PROP_POS_FRAMES, trackbar_value-1)
+        ret, frame_ = vs_.read()
+        cv2.imshow("frame", frame_ ) 
+        cv2.waitKey(1)
+
 def process_video(video_path, tracker_name, fps):
     try:
         vs = cv2.VideoCapture(video_path)   # Create Opencv's video stream object
@@ -247,6 +257,10 @@ def process_video(video_path, tracker_name, fps):
     tracker_list = [*tracking_algos]
     tracker_pos  = tracker_list.index(tracker_name)
 
+    length = video_params['frames_count'] - 1
+    cv2.namedWindow('frame')
+    cv2.createTrackbar( 'Slider:', 'frame', 0, length, partial(trackbar_change, vs_ = vs)  )
+
     while vs.isOpened():
 
         frame, paused, boxes = display_frame(vs, video_params, trackers, tracker_name, paused, new_annotations_file, old_annotations, tracking_on)    # grab the current frame
@@ -264,8 +278,8 @@ def process_video(video_path, tracker_name, fps):
         elif key == ord('g'):  # Play at fps
             frame, paused, boxes = display_frame(vs, video_params, trackers, tracker_name, False, new_annotations_file, old_annotations, tracking_on)
 
-        # if the 's' key is pressed, we will "select" a bounding boxes to track objects
-        elif key == ord('s'):
+        # if the 'z' key is pressed, we will "select" a bounding boxes to track objects
+        elif key == ord('z'):
             trackers, boxes = start_tracking(frame, tracker_name, tracking_algos)
             tracking_on = True
             frame, paused, boxes = display_frame(vs, video_params, trackers, tracker_name, paused, new_annotations_file, old_annotations, tracking_on, 'cur', user = True)
@@ -320,7 +334,7 @@ def process_video(video_path, tracker_name, fps):
                 elif key2 == ord('p'):  # Previous frame
                     frame, paused, boxes = display_frame(vs, video_params, trackers, tracker_name, paused, new_annotations_file, old_annotations, tracking_on, 'prev')
 
-                elif key2 == ord('s'):
+                elif key2 == ord('z'):
                     tracking_on=True
                     trackers, boxes = start_tracking(frame, tracker_name, tracking_algos)
                     frame, paused, boxes = display_frame(vs, video_params, trackers, tracker_name, paused, new_annotations_file, old_annotations, tracking_on, 'cur', user=True)
@@ -386,25 +400,25 @@ def process_video(video_path, tracker_name, fps):
 
                         while True:
                             key3 = cv2.waitKey(1) or 0xff 
-                            if key3 == ord('2'):   # down
+                            if key3 == ord('s'):   # down
                                 y += 1
                                 boxes.pop(int(box_to_move))
                                 boxes.insert( int(box_to_move) , [x, y, w, h] )
                                 frame, paused, boxes, trackers = restart_tracking_new_boxes(boxes, trackers, tracking_algos, tracker_name, frame, vs, video_params,paused, new_annotations_file, old_annotations, tracking_on)  
                                 print ('Moved bounding box # ', box_to_move, ' down by 1 pixel')
-                            elif key3 == ord('4'):   # left
+                            elif key3 == ord('a'):   # left
                                 x -= 1
                                 boxes.pop(int(box_to_move))
                                 boxes.insert( int(box_to_move) , [x, y, w, h] )
                                 frame, paused, boxes, trackers = restart_tracking_new_boxes(boxes, trackers, tracking_algos, tracker_name, frame, vs, video_params,paused, new_annotations_file, old_annotations, tracking_on)  
                                 print ('Moved bounding box # ', box_to_move, ' left by 1 pixel')
-                            elif key3 == ord('6'):   # right
+                            elif key3 == ord('d'):   # right
                                 x += 1
                                 boxes.pop(int(box_to_move))
                                 boxes.insert( int(box_to_move) , [x, y, w, h] )
                                 frame, paused, boxes, trackers = restart_tracking_new_boxes(boxes, trackers, tracking_algos, tracker_name, frame, vs, video_params,paused, new_annotations_file, old_annotations, tracking_on)  
                                 print ('Moved bounding box # ', box_to_move, ' right by 1 pixel')
-                            elif key3 == ord('8'):   # up
+                            elif key3 == ord('w'):   # up
                                 y -= 1
                                 boxes.pop(int(box_to_move))
                                 boxes.insert( int(box_to_move) , [x, y, w, h] )
@@ -480,20 +494,30 @@ if __name__ == "__main__":
     main()
 
 ''' 
-cv2.set(CAP_PROP_POS_FRAMES) is known to not seek the specified frame accurately. 
-This is perhaps because it seeks to the nearest keyframe. This means there might be 
-repetition of a couple of frames at points where the video is fragmented. 
-So it is not advisable to adopt this method for frame-critical use cases.
+When app starts:
+press "g" to start video at normal speed
+Or press "x" for pausing video. Some functions work only in pause mode. 
 
-Keys->
-    s-> region of intrest selector
-    n-> next frame (first pause then use)
-    p-> prev frame (first pause then use)
-    q-> quit
-    g-> play video at normal speed
-    x-> pause/resume video
-    t-> next tracker algo selector
-    y-> previous tracker algo selector
+Key Functions -->
+z : Region of intrest selector
+Esc : Finalize selection
+r : Reset region of intrest selector
+q : Quit app. Activate terminal window for further dialogue
+t : Next tracker algo selector
+y : Previous tracker algo selector
+
+x : Pause video
+          Below keys work only in pause mode.
+          n : Display next frame
+          p : Display prev frame
+          + : Add a bounding box
+          - : Remove a bounding box. Activate terminal window to input bounding box number
+          m : Move a bounding box. Activate terminal window to input bounding box number. Press "0" when done with moving
+                    s : Move selected bounding box down by one pixel
+                    a : Move selected bounding box left by one pixel
+                    d : Move selected bounding box right by one pixel
+                    w : Move selected bounding box up by one pixel
+                    0 : When done with moving, press "0" to deactivate moving mode. 
 
 Command to Run app ->
 
@@ -503,6 +527,13 @@ Example Command ->
 
     python object_tracker.py --video us_bp.mp4 --tracker csrt --fps 15
 
+Tracking algo explanations:
+https://www.learnopencv.com/object-tracking-using-opencv-cpp-python/
+
+cv2.set(CAP_PROP_POS_FRAMES) is known to not seek the specified frame accurately. 
+This is perhaps because it seeks to the nearest keyframe. This means there might be 
+repetition of a couple of frames at points where the video is fragmented. 
+So it is not advisable to adopt this method for frame-critical use cases.
 '''
 
 
