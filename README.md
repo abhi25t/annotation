@@ -5,7 +5,7 @@ press "**g**" to start video at normal speed <br>
 Or press "**x**" for pausing video. Some functions work only in pause mode.<br><br>
 
 **Key Functions -->**<br> 
-**s** : Region of intrest selector <br> 
+**z** : Region of intrest selector <br> 
 **Esc** : Finalize selection <br> 
 **r** : Reset region of intrest selector <br> 
 **q** : Quit app. Activate terminal window for further dialogue <br>
@@ -19,10 +19,10 @@ Or press "**x**" for pausing video. Some functions work only in pause mode.<br><
 &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; **+** : Add a bounding box <br> 
 &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; **-** : Remove a bounding box. Activate terminal window to input bounding box number <br> 
 &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; **m** : Move a bounding box. Activate terminal window to input bounding box number. Press "0" when done with moving <br> 
-&nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; **2** : Move selected bounding box down by one pixel <br> 
-&nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; **4** : Move selected bounding box left by one pixel <br> 
-&nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; **6** : Move selected bounding box right by one pixel <br> 
-&nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; **8** : Move selected bounding box up by one pixel <br> 
+&nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; **s** : Move selected bounding box down by one pixel <br> 
+&nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; **a** : Move selected bounding box left by one pixel <br> 
+&nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; **d** : Move selected bounding box right by one pixel <br> 
+&nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; **w** : Move selected bounding box up by one pixel <br> 
 &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; **0** : When done with moving, press "0" to deactivate moving mode. <br> 
 
 
